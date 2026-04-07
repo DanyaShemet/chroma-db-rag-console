@@ -1,46 +1,68 @@
 import 'dotenv/config';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import boxen from 'boxen';
+import pc from 'picocolors';
 import { checkChromaConnection } from './chroma.js';
 import { askDirect, askRag, clearKnowledgeBase, getIndexedChunk, getIndexedChunks, getKnowledgeBaseSummary, indexPdf, } from './rag-demo.js';
+const promptLabel = pc.bold(pc.cyan('rag-demo'));
+const muted = (value) => pc.dim(value);
+const info = (value) => `${pc.cyan('i')} ${value}`;
+const success = (value) => `${pc.green('OK')} ${value}`;
+const warning = (value) => `${pc.yellow('!')} ${value}`;
+const errorText = (value) => `${pc.red('ERR')} ${value}`;
+function printSection(title) {
+    console.log(`\n${pc.bold(pc.blue(title))}`);
+}
+function printKeyValue(label, value) {
+    console.log(`${pc.bold(label)} ${value}`);
+}
+function printBox(title, body, borderColor) {
+    console.log(boxen(body, {
+        title,
+        padding: 1,
+        margin: { top: 1, bottom: 0, left: 0, right: 0 },
+        borderStyle: 'round',
+        borderColor,
+    }));
+}
 function printHelp() {
-    console.log('\nCommands:');
-    console.log('  load <path-to-file>  Index a PDF or TXT file into Chroma');
-    console.log('  ask <question>       Ask a question with RAG context from Chroma');
-    console.log('  ask-direct <question> Ask a question without RAG for hallucination demos');
-    console.log('  list                 Show indexed files and chunk count');
-    console.log('  chunks [filter]      Show stored chunks, optionally filtered by file name or path');
-    console.log('  chunk <filter> <n>   Show full content of one stored chunk');
-    console.log('  reset                Delete all indexed records from the demo collection');
-    console.log('  help                 Show this help');
-    console.log('  exit                 Quit the console\n');
+    printSection('Commands');
+    console.log(`  ${pc.green('load <path-to-file>')}   ${muted('Index a PDF or TXT file into Chroma')}`);
+    console.log(`  ${pc.green('ask <question>')}        ${muted('Ask a question with RAG context from Chroma')}`);
+    console.log(`  ${pc.green('ask-direct <question>')} ${muted('Ask a question without RAG for hallucination demos')}`);
+    console.log(`  ${pc.green('list')}                  ${muted('Show indexed files and chunk count')}`);
+    console.log(`  ${pc.green('chunks [filter]')}       ${muted('Show stored chunks, optionally filtered by file name or path')}`);
+    console.log(`  ${pc.green('chunk <filter> <n>')}    ${muted('Show full content of one stored chunk')}`);
+    console.log(`  ${pc.green('reset')}                 ${muted('Delete all indexed records from the demo collection')}`);
+    console.log(`  ${pc.green('help')}                  ${muted('Show this help')}`);
+    console.log(`  ${pc.green('exit')}                  ${muted('Quit the console')}\n`);
 }
 function printRagDiagnostics(diagnostics) {
-    console.log('\nRAG diagnostics:');
-    console.log(`Embedding model: ${diagnostics.embeddingModel}`);
-    console.log(`Chat model: ${diagnostics.chatModel}`);
-    console.log(`Top-K: ${diagnostics.topK}`);
+    printSection('RAG Diagnostics');
+    printKeyValue('Embedding model:', diagnostics.embeddingModel);
+    printKeyValue('Chat model:', diagnostics.chatModel);
+    printKeyValue('Top-K:', String(diagnostics.topK));
     if (!diagnostics.matches.length) {
-        console.log('Matches: none');
+        console.log(muted('Matches: none'));
         return;
     }
-    console.log('Matches:');
+    console.log(pc.bold('Matches:'));
     diagnostics.matches.forEach((match, index) => {
         const chunkLabel = match.chunkIndex == null ? 'unknown' : match.chunkIndex;
         const distanceLabel = match.distance == null ? 'n/a' : match.distance.toFixed(6);
-        console.log(`  ${index + 1}. file=${match.fileName}, chunk=${chunkLabel}, distance=${distanceLabel}`);
-        console.log(`     path=${match.sourcePath}`);
-        console.log(`     preview=${match.preview || '[empty chunk]'}`);
+        console.log(`  ${pc.cyan(String(index + 1))}. ${pc.bold(match.fileName)} ${muted(`chunk=${chunkLabel}, distance=${distanceLabel}`)}`);
+        console.log(`     ${muted(match.sourcePath)}`);
+        console.log(`     ${match.preview || muted('[empty chunk]')}`);
     });
 }
 async function main() {
     await checkChromaConnection();
     const rl = readline.createInterface({ input, output });
-    console.log('Console RAG demo is ready.');
-    console.log('Using Chroma collection:', process.env.CHROMA_COLLECTION || 'rag_demo_console');
+    printBox('Console RAG Demo', `${pc.bold('Status')} ${pc.green('ready')}\n${pc.bold('Chroma collection')} ${process.env.CHROMA_COLLECTION || 'rag_demo_console'}`, 'cyan');
     printHelp();
     while (true) {
-        const rawInput = (await rl.question('rag-demo> ')).trim();
+        const rawInput = (await rl.question(`${promptLabel}> `)).trim();
         if (!rawInput) {
             continue;
         }
@@ -56,101 +78,105 @@ async function main() {
             }
             if (command === 'load') {
                 if (!value) {
-                    console.log('Provide a PDF or TXT file path.');
+                    console.log(warning('Provide a PDF or TXT file path.'));
                     continue;
                 }
-                console.log('Indexing file...');
+                console.log(info('Indexing file...'));
                 const result = await indexPdf(value);
-                console.log(`Indexed ${result.fileName} with ${result.chunkCount} chunks.`);
+                console.log(success(`Indexed ${pc.bold(result.fileName)} with ${result.chunkCount} chunks.`));
                 continue;
             }
             if (command === 'ask') {
                 if (!value) {
-                    console.log('Provide a question.');
+                    console.log(warning('Provide a question.'));
                     continue;
                 }
-                console.log('Searching Chroma and generating answer...');
+                console.log(info('Searching Chroma and generating answer...'));
                 const result = await askRag(value);
                 printRagDiagnostics(result.diagnostics);
-                console.log(`\nAnswer:\n${result.answer}\n`);
+                printBox('Answer', result.answer, 'green');
                 continue;
             }
             if (command === 'ask-direct') {
                 if (!value) {
-                    console.log('Provide a question.');
+                    console.log(warning('Provide a question.'));
                     continue;
                 }
-                console.log('Generating answer without RAG context...');
+                console.log(info('Generating answer without RAG context...'));
                 const result = await askDirect(value);
-                console.log(`\nDirect answer:\n${result.answer}\n`);
+                printBox('Direct Answer', result.answer, 'yellow');
                 continue;
             }
             if (command === 'list') {
                 const summary = await getKnowledgeBaseSummary();
-                console.log(`Chunks: ${summary.chunkCount}`);
-                console.log(`Files: ${summary.files.length ? summary.files.join(', ') : 'none'}`);
+                printSection('Knowledge Base');
+                printKeyValue('Chunks:', String(summary.chunkCount));
+                printKeyValue('Files:', summary.files.length ? summary.files.join(', ') : muted('none'));
                 continue;
             }
             if (command === 'chunks') {
                 const chunks = await getIndexedChunks(value || undefined);
                 if (!chunks.length) {
-                    console.log('No chunks found.');
+                    console.log(warning('No chunks found.'));
                     continue;
                 }
-                console.log(`Stored chunks: ${chunks.length}`);
+                printSection(`Stored Chunks (${chunks.length})`);
                 chunks.forEach((chunk, index) => {
                     const chunkLabel = chunk.chunkIndex == null ? 'unknown' : chunk.chunkIndex;
-                    console.log(`  ${index + 1}. file=${chunk.fileName}, chunk=${chunkLabel}, length=${chunk.length}`);
-                    console.log(`     path=${chunk.sourcePath}`);
-                    console.log(`     preview=${chunk.preview || '[empty chunk]'}`);
+                    console.log(`  ${pc.cyan(String(index + 1))}. ${pc.bold(chunk.fileName)} ${muted(`chunk=${chunkLabel}, length=${chunk.length}`)}`);
+                    console.log(`     ${muted(chunk.sourcePath)}`);
+                    console.log(`     ${chunk.preview || muted('[empty chunk]')}`);
                 });
                 continue;
             }
             if (command === 'chunk') {
                 if (!value) {
-                    console.log('Provide a file filter and chunk index, for example: chunk aurelion 0');
+                    console.log(warning('Provide a file filter and chunk index, for example: chunk aurelion 0'));
                     continue;
                 }
                 const lastSpaceIndex = value.lastIndexOf(' ');
                 if (lastSpaceIndex === -1) {
-                    console.log('Provide a file filter and chunk index, for example: chunk aurelion 0');
+                    console.log(warning('Provide a file filter and chunk index, for example: chunk aurelion 0'));
                     continue;
                 }
                 const filter = value.slice(0, lastSpaceIndex).trim();
                 const chunkIndexRaw = value.slice(lastSpaceIndex + 1).trim();
                 const chunkIndex = Number(chunkIndexRaw);
                 if (!filter || !Number.isInteger(chunkIndex) || chunkIndex < 0) {
-                    console.log('Chunk index must be a non-negative integer.');
+                    console.log(warning('Chunk index must be a non-negative integer.'));
                     continue;
                 }
                 const chunk = await getIndexedChunk(filter, chunkIndex);
                 if (!chunk) {
-                    console.log('Chunk not found.');
+                    console.log(warning('Chunk not found.'));
                     continue;
                 }
-                console.log(`file=${chunk.fileName}, chunk=${chunk.chunkIndex}, length=${chunk.length}`);
-                console.log(`path=${chunk.sourcePath}`);
-                console.log(`content:\n${chunk.content}`);
+                printSection('Chunk');
+                printKeyValue('File:', chunk.fileName);
+                printKeyValue('Chunk:', String(chunk.chunkIndex));
+                printKeyValue('Length:', String(chunk.length));
+                printKeyValue('Path:', chunk.sourcePath);
+                printBox('Content', chunk.content, 'blue');
                 continue;
             }
             if (command === 'reset') {
                 const deleted = await clearKnowledgeBase();
-                console.log(`Deleted ${deleted} records.`);
+                console.log(success(`Deleted ${deleted} records.`));
                 continue;
             }
-            console.log('Unknown command.');
+            console.log(warning('Unknown command.'));
             printHelp();
         }
         catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
-            console.error(`Error: ${message}`);
+            console.error(errorText(message));
         }
     }
     rl.close();
 }
 main().catch((error) => {
     const message = error instanceof Error ? error.message : 'Unknown startup error';
-    console.error(`Startup failed: ${message}`);
+    console.error(errorText(`Startup failed: ${message}`));
     process.exitCode = 1;
 });
 //# sourceMappingURL=index.js.map
