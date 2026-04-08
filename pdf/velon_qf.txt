@@ -1,0 +1,5 @@
+Velon Market Notes:
+- Floating platforms
+- Trades memories as currency
+- Sells abstract goods (sounds, shadows)
+- No fixed location

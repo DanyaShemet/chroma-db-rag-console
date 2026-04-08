@@ -14,7 +14,8 @@
     "clean": "rimraf dist",
     "ts-compile": "npm run clean ; tsc",
     "typecheck": "tsc --noEmit",
-    "start": "npm run ts-compile ; node dist/index.js"
+    "start": "npm run ts-compile ; node dist/index.js",
+    "start:chroma": "chroma run --path ./chroma-data"
   },
   "author": "",
   "license": "ISC",

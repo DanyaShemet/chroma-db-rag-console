@@ -1,29 +1,26 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { addRecords, deleteRecords, listRecords, queryRecords, resetCollection } from './chroma.js'
+import { addRecords, deleteRecords, listRecords, queryRecords, resetCollection } from '../chroma/index.js'
 import {
   answerQuestion,
   answerQuestionDirect,
   getChatModelName,
   getEmbedding,
   getEmbeddingModelName,
-} from './openai.js'
-import { extractDocumentText } from './pdf.js'
-import { splitIntoChunks } from './chunk.js'
-
-type IndexedDocument = {
-  fileName: string
-  chunkCount: number
-}
-
-type RagMatch = {
-  fileName: string
-  sourcePath: string
-  chunkIndex: number | null
-  distance: number | null
-  preview: string
-}
+} from '../openai.js'
+import { extractDocumentText } from '../pdf.js'
+import { splitIntoChunks } from '../chunk.js'
+import type {
+  DirectAnswerResult,
+  IndexedChunk,
+  IndexedChunkRow,
+  IndexedDocument,
+  KnowledgeBaseSummary,
+  RagAnswerResult,
+  RankedMatch,
+} from '../models/types/rag.js'
+import { getNonNegativeNumberEnv, getPositiveIntegerEnv, hasTermOverlap } from './helpers.js'
 
 export async function indexPdf(filePath: string): Promise<IndexedDocument> {
   const absolutePath = path.resolve(filePath)
@@ -72,20 +69,16 @@ export async function indexPdf(filePath: string): Promise<IndexedDocument> {
   }
 }
 
-export async function askRag(question: string): Promise<{
-  answer: string
-  contextDocuments: string[]
-  diagnostics: {
-    embeddingModel: string
-    chatModel: string
-    topK: number
-    matches: RagMatch[]
-  }
-}> {
-  const topK = 3
+export async function askRag(question: string): Promise<RagAnswerResult> {
+  const topK = getPositiveIntegerEnv('RAG_TOP_K', 3)
+  const candidateLimit = Math.max(topK, getPositiveIntegerEnv('RAG_CANDIDATE_LIMIT', 8))
+  const maxDistance = getNonNegativeNumberEnv('RAG_MAX_DISTANCE', 1.2)
+
   const embedding = await getEmbedding(question)
-  const matches = await queryRecords({ embedding, limit: topK })
-  const diagnosticsMatches = matches.documents.map((document, index) => {
+  const matches = await queryRecords({ embedding, limit: candidateLimit })
+
+
+  const rankedMatches: RankedMatch[] = matches.documents.map((document, index) => {
     const metadata = matches.metadatas[index]
     const fileNameValue = metadata?.fileName
     const sourcePathValue = metadata?.sourcePath
@@ -97,13 +90,20 @@ export async function askRag(question: string): Promise<{
       chunkIndex: typeof chunkIndexValue === 'number' ? chunkIndexValue : null,
       distance: matches.distances[index] ?? null,
       preview: document.slice(0, 120).replace(/\s+/g, ' ').trim(),
+      document,
     }
   })
 
 
-  if (!matches.documents.length) {
+  const distanceFilteredMatches = rankedMatches.filter((match) => match.distance == null || match.distance <= maxDistance)
+  const overlapMatches = rankedMatches.filter((match) => hasTermOverlap(question, match))
+  const fallbackMatches = overlapMatches.length ? overlapMatches : rankedMatches
+  const selectedMatches = (distanceFilteredMatches.length ? distanceFilteredMatches : fallbackMatches).slice(0, topK)
+  const diagnosticsMatches = selectedMatches.map(({ document: _document, ...match }) => match)
+
+  if (!selectedMatches.length) {
     return {
-      answer: 'Knowledge base is empty. Load a PDF or TXT file first.',
+      answer: 'I could not find any sufficiently relevant chunks in the knowledge base for this question.',
       contextDocuments: [],
       diagnostics: {
         embeddingModel: getEmbeddingModelName(),
@@ -114,11 +114,14 @@ export async function askRag(question: string): Promise<{
     }
   }
 
-  const answer = await answerQuestion(question, matches.documents)
+  const answer = await answerQuestion(
+    question,
+    selectedMatches.map((match) => match.document),
+  )
 
   return {
     answer,
-    contextDocuments: matches.documents,
+    contextDocuments: selectedMatches.map((match) => match.document),
     diagnostics: {
       embeddingModel: getEmbeddingModelName(),
       chatModel: getChatModelName(),
@@ -128,18 +131,12 @@ export async function askRag(question: string): Promise<{
   }
 }
 
-export async function askDirect(question: string): Promise<{
-  answer: string
-}> {
+export async function askDirect(question: string): Promise<DirectAnswerResult> {
   const answer = await answerQuestionDirect(question)
-
   return { answer }
 }
 
-export async function getKnowledgeBaseSummary(): Promise<{
-  chunkCount: number
-  files: string[]
-}> {
+export async function getKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {
   const records = await listRecords()
   const files = Array.from(
     new Set(
@@ -155,15 +152,7 @@ export async function getKnowledgeBaseSummary(): Promise<{
   }
 }
 
-export async function getIndexedChunks(filter?: string): Promise<
-  Array<{
-    fileName: string
-    sourcePath: string
-    chunkIndex: number | null
-    length: number
-    preview: string
-  }>
-> {
+export async function getIndexedChunks(filter?: string): Promise<IndexedChunkRow[]> {
   const records = await listRecords(1000)
   const normalizedFilter = filter?.trim().toLowerCase()
 
@@ -204,13 +193,7 @@ export async function getIndexedChunks(filter?: string): Promise<
     })
 }
 
-export async function getIndexedChunk(filter: string, chunkIndex: number): Promise<{
-  fileName: string
-  sourcePath: string
-  chunkIndex: number
-  length: number
-  content: string
-} | null> {
+export async function getIndexedChunk(filter: string, chunkIndex: number): Promise<IndexedChunk | null> {
   const normalizedFilter = filter.trim().toLowerCase()
 
   if (!normalizedFilter) {

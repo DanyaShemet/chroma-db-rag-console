@@ -1,4 +1,4 @@
-=Viron is a fictional exoplanet located in the Epsilon Eridani system.
+Viron is a fictional exoplanet located in the Epsilon Eridani system.
 
 It has a dense purple atmosphere composed mainly of argon and unknown organic particles.
 
