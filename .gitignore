@@ -2,4 +2,6 @@
 .env
 /.idea
 /dist
+explaining.md
+/pdf
 /chroma-data
