@@ -1,10 +1,11 @@
 import boxen from 'boxen'
 import pc from 'picocolors'
 import { getCollectionName } from '../chroma/index.js'
-import type { IndexedChunk as StoredChunk, IndexedChunkRow as ChunkRow, RagAnswerResult } from '../models/types/rag.js'
+import type { DirectAnswerResult, IndexedChunk as StoredChunk, IndexedChunkRow as ChunkRow, RagAnswerResult } from '../models/types/rag.js'
 
 type BorderColor = NonNullable<Parameters<typeof boxen>[1]>['borderColor']
 type RagDiagnostics = RagAnswerResult['diagnostics']
+type DirectDiagnostics = DirectAnswerResult['diagnostics']
 
 export const promptLabel = pc.bold(pc.cyan('rag-demo'))
 export const muted = (value: string): string => pc.dim(value)
@@ -60,7 +61,9 @@ export function printHelp(): void {
 
 export function printRagDiagnostics(diagnostics: RagDiagnostics): void {
   printSection('RAG Diagnostics')
+  printKeyValue('Embedding provider:', diagnostics.embeddingProvider)
   printKeyValue('Embedding model:', diagnostics.embeddingModel)
+  printKeyValue('Chat provider:', diagnostics.chatProvider)
   printKeyValue('Chat model:', diagnostics.chatModel)
   printKeyValue('Top-K:', String(diagnostics.topK))
 
@@ -82,6 +85,12 @@ export function printRagDiagnostics(diagnostics: RagDiagnostics): void {
       match.preview,
     )
   })
+}
+
+export function printDirectDiagnostics(diagnostics: DirectDiagnostics): void {
+  printSection('Model Info')
+  printKeyValue('Chat provider:', diagnostics.chatProvider)
+  printKeyValue('Chat model:', diagnostics.chatModel)
 }
 
 export function printChunkRows(chunks: ChunkRow[]): void {

@@ -14,20 +14,49 @@ const chromaDatabase = process.env.CHROMA_DATABASE || 'default_database'
 const chromaToken = process.env.CHROMA_TOKEN
 
 function getEmbeddingModelForCollection(): string {
-  return (
-    process.env.EMBEDDING_MODEL ||
-    'text-embedding-3-small'
-  )
+  if (process.env.EMBEDDING_MODEL) {
+    return process.env.EMBEDDING_MODEL
+  }
+
+  const provider = (process.env.EMBEDDING_PROVIDER || 'openai').toLowerCase()
+
+  if (provider === 'gemini') {
+    return 'text-embedding-004'
+  }
+
+  if (provider === 'huggingface') {
+    return 'sentence-transformers/all-MiniLM-L6-v2'
+  }
+
+  return 'text-embedding-3-small'
+}
+
+function normalizeCollectionName(name: string): string {
+  const normalized = name
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^[^a-zA-Z0-9]+/, '')
+    .replace(/[^a-zA-Z0-9]+$/, '')
+
+  if (!normalized) {
+    return 'rag_default'
+  }
+
+  if (normalized.length < 3) {
+    return normalized.padEnd(3, '0')
+  }
+
+  return normalized.slice(0, 63).replace(/[^a-zA-Z0-9]+$/, '') || 'rag_default'
 }
 
 export function getCollectionName(): string {
   const configuredCollection = process.env.CHROMA_COLLECTION?.trim()
 
   if (configuredCollection && configuredCollection !== 'rag_demo_console') {
-    return configuredCollection
+    return normalizeCollectionName(configuredCollection)
   }
 
-  return `rag_${getEmbeddingModelForCollection()}`
+  return normalizeCollectionName(`rag_${getEmbeddingModelForCollection()}`)
 }
 
 function getHeaders(): HeadersInit {

@@ -1,12 +1,37 @@
 import OpenAI from 'openai'
 
 const embeddingProvider = (process.env.EMBEDDING_PROVIDER || 'openai').toLowerCase()
-const embeddingModel =
-  process.env.EMBEDDING_MODEL ||
-  'text-embedding-3-small'
 const llmProvider = (process.env.LLM_PROVIDER || 'openai').toLowerCase()
+
+function getDefaultEmbeddingModel(): string {
+  if (embeddingProvider === 'gemini') {
+    return 'text-embedding-004'
+  }
+
+  if (embeddingProvider === 'huggingface') {
+    return 'sentence-transformers/all-MiniLM-L6-v2'
+  }
+
+  return 'text-embedding-3-small'
+}
+
+function getDefaultChatModel(): string {
+  if (llmProvider === 'gemini') {
+    return 'gemini-2.0-flash'
+  }
+
+  if (llmProvider === 'huggingface') {
+    return 'katanemo/Arch-Router-1.5B:hf-inference'
+  }
+
+  return 'gpt-5.4'
+}
+
+const embeddingModel = process.env.EMBEDDING_MODEL || getDefaultEmbeddingModel()
 const openAiChatModel = process.env.OPENAI_CHAT_MODEL || 'gpt-5.4'
 const geminiChatModel = process.env.GEMINI_CHAT_MODEL || 'gemini-2.0-flash'
+const huggingFaceChatModel = process.env.HUGGINGFACE_CHAT_MODEL || getDefaultChatModel()
+const huggingFaceFallbackChatModel = 'katanemo/Arch-Router-1.5B:hf-inference'
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY
@@ -18,16 +43,29 @@ function getOpenAIClient(): OpenAI {
   return new OpenAI({ apiKey })
 }
 
+function getHuggingFaceClient(): OpenAI {
+  const apiKey = getHuggingFaceApiKey()
+
+  return new OpenAI({
+    apiKey,
+    baseURL: 'https://router.huggingface.co/v1',
+  })
+}
+
 export async function getEmbedding(text: string): Promise<number[]> {
   if (embeddingProvider === 'gemini') {
     return getGeminiEmbedding(text)
+  }
+
+  if (embeddingProvider === 'huggingface') {
+    return getHuggingFaceEmbedding(text)
   }
 
   if (embeddingProvider === 'openai') {
     return getOpenAIEmbedding(text)
   }
 
-  throw new Error(`Unsupported EMBEDDING_PROVIDER: ${embeddingProvider}. Use "openai" or "gemini".`)
+  throw new Error(`Unsupported EMBEDDING_PROVIDER: ${embeddingProvider}. Use "openai", "gemini", or "huggingface".`)
 }
 
 async function getOpenAIEmbedding(text: string): Promise<number[]> {
@@ -44,8 +82,24 @@ export function getEmbeddingModelName(): string {
   return embeddingModel
 }
 
+export function getEmbeddingProviderName(): string {
+  return embeddingProvider
+}
+
 export function getChatModelName(): string {
-  return llmProvider === 'gemini' ? geminiChatModel : openAiChatModel
+  if (llmProvider === 'gemini') {
+    return geminiChatModel
+  }
+
+  if (llmProvider === 'huggingface') {
+    return huggingFaceChatModel
+  }
+
+  return openAiChatModel
+}
+
+export function getChatProviderName(): string {
+  return llmProvider
 }
 
 function getGeminiApiKey(): string {
@@ -53,6 +107,16 @@ function getGeminiApiKey(): string {
 
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is required for answer generation.')
+  }
+
+  return apiKey
+}
+
+function getHuggingFaceApiKey(): string {
+  const apiKey = process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY
+
+  if (!apiKey) {
+    throw new Error('HF_TOKEN or HUGGINGFACE_API_KEY is required for Hugging Face requests.')
   }
 
   return apiKey
@@ -89,6 +153,43 @@ async function getGeminiEmbedding(text: string): Promise<number[]> {
 
   if (!values?.length) {
     throw new Error('Gemini embedding response did not contain embedding values.')
+  }
+
+  return values
+}
+
+async function getHuggingFaceEmbedding(text: string): Promise<number[]> {
+  const apiKey = getHuggingFaceApiKey()
+  const response = await fetch(
+    `https://router.huggingface.co/hf-inference/models/${encodeURIComponent(embeddingModel)}/pipeline/feature-extraction`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        inputs: text,
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Hugging Face embedding request failed (${response.status}): ${body}`)
+  }
+
+  const data = (await response.json()) as number[] | number[][]
+  let values: number[]
+
+  if (Array.isArray(data[0])) {
+    values = data[0]
+  } else {
+    values = data as number[]
+  }
+
+  if (!Array.isArray(values) || !values.length || values.some((value) => typeof value !== 'number')) {
+    throw new Error('Hugging Face embedding response did not contain a numeric embedding vector.')
   }
 
   return values
@@ -136,6 +237,45 @@ async function generateGeminiText(systemInstruction: string, userPrompt: string)
   return text || 'No response from model.'
 }
 
+async function generateHuggingFaceText(systemInstruction: string, userPrompt: string): Promise<string> {
+  const client = getHuggingFaceClient()
+  const messages = [
+    {
+      role: 'system' as const,
+      content: systemInstruction,
+    },
+    {
+      role: 'user' as const,
+      content: userPrompt,
+    },
+  ]
+
+  try {
+    const response = await client.chat.completions.create({
+      model: huggingFaceChatModel,
+      messages,
+    })
+
+    return response.choices[0].message.content?.trim() || 'No response from model.'
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const canRetryWithFallback =
+      huggingFaceChatModel !== huggingFaceFallbackChatModel &&
+      message.includes('is not supported by provider')
+
+    if (!canRetryWithFallback) {
+      throw error
+    }
+
+    const response = await client.chat.completions.create({
+      model: huggingFaceFallbackChatModel,
+      messages,
+    })
+
+    return response.choices[0].message.content?.trim() || 'No response from model.'
+  }
+}
+
 async function generateOpenAIText(systemInstruction: string, userPrompt: string): Promise<string> {
   const openai = getOpenAIClient()
   const response = await openai.chat.completions.create({
@@ -160,11 +300,15 @@ async function generateText(systemInstruction: string, userPrompt: string): Prom
     return generateGeminiText(systemInstruction, userPrompt)
   }
 
+  if (llmProvider === 'huggingface') {
+    return generateHuggingFaceText(systemInstruction, userPrompt)
+  }
+
   if (llmProvider === 'openai') {
     return generateOpenAIText(systemInstruction, userPrompt)
   }
 
-  throw new Error(`Unsupported LLM_PROVIDER: ${llmProvider}. Use "openai" or "gemini".`)
+  throw new Error(`Unsupported LLM_PROVIDER: ${llmProvider}. Use "openai", "gemini", or "huggingface".`)
 }
 
 export async function answerQuestion(question: string, contextChunks: string[]): Promise<string> {

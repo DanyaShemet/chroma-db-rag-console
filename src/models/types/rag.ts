@@ -19,7 +19,9 @@ export type RagAnswerResult = {
   answer: string
   contextDocuments: string[]
   diagnostics: {
+    embeddingProvider: string
     embeddingModel: string
+    chatProvider: string
     chatModel: string
     topK: number
     matches: RagMatch[]
@@ -28,6 +30,10 @@ export type RagAnswerResult = {
 
 export type DirectAnswerResult = {
   answer: string
+  diagnostics: {
+    chatProvider: string
+    chatModel: string
+  }
 }
 
 export type KnowledgeBaseSummary = {

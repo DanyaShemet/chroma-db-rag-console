@@ -6,8 +6,10 @@ import {
   answerQuestion,
   answerQuestionDirect,
   getChatModelName,
+  getChatProviderName,
   getEmbedding,
   getEmbeddingModelName,
+  getEmbeddingProviderName,
 } from '../openai.js'
 import { extractDocumentText } from '../pdf.js'
 import { splitIntoChunks } from '../chunk.js'
@@ -106,7 +108,9 @@ export async function askRag(question: string): Promise<RagAnswerResult> {
       answer: 'I could not find any sufficiently relevant chunks in the knowledge base for this question.',
       contextDocuments: [],
       diagnostics: {
+        embeddingProvider: getEmbeddingProviderName(),
         embeddingModel: getEmbeddingModelName(),
+        chatProvider: getChatProviderName(),
         chatModel: getChatModelName(),
         topK,
         matches: [],
@@ -123,7 +127,9 @@ export async function askRag(question: string): Promise<RagAnswerResult> {
     answer,
     contextDocuments: selectedMatches.map((match) => match.document),
     diagnostics: {
+      embeddingProvider: getEmbeddingProviderName(),
       embeddingModel: getEmbeddingModelName(),
+      chatProvider: getChatProviderName(),
       chatModel: getChatModelName(),
       topK,
       matches: diagnosticsMatches,
@@ -133,7 +139,13 @@ export async function askRag(question: string): Promise<RagAnswerResult> {
 
 export async function askDirect(question: string): Promise<DirectAnswerResult> {
   const answer = await answerQuestionDirect(question)
-  return { answer }
+  return {
+    answer,
+    diagnostics: {
+      chatProvider: getChatProviderName(),
+      chatModel: getChatModelName(),
+    },
+  }
 }
 
 export async function getKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {

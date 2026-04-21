@@ -50,6 +50,26 @@ RAG_MAX_DISTANCE=1.2
 - заповніть `GEMINI_API_KEY`
 - за потреби змініть `GEMINI_CHAT_MODEL`
 
+Якщо хочете використовувати Hugging Face:
+
+- встановіть `EMBEDDING_PROVIDER=huggingface`, якщо embeddings мають будуватись через Hugging Face
+- для embeddings задайте `EMBEDDING_MODEL`, наприклад `sentence-transformers/all-MiniLM-L6-v2` або `intfloat/multilingual-e5-large`
+- встановіть `LLM_PROVIDER=huggingface`, якщо відповіді мають генеруватись через Hugging Face
+- заповніть `HF_TOKEN` або `HUGGINGFACE_API_KEY`
+- за потреби змініть `HUGGINGFACE_CHAT_MODEL`, наприклад `katanemo/Arch-Router-1.5B:hf-inference`
+- `hf-inference` підтримує не всі chat-моделі з Hub; якщо конкретну модель відхиляє, використовуйте іншу підтримувану модель або інший provider suffix
+
+Приклад конфігурації для Hugging Face:
+
+```env
+EMBEDDING_PROVIDER=huggingface
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+LLM_PROVIDER=huggingface
+HUGGINGFACE_CHAT_MODEL=katanemo/Arch-Router-1.5B:hf-inference
+HF_TOKEN=hf_...
+```
+
 ### 4. Запустіть Chroma
 
 ```bash
@@ -122,10 +142,11 @@ exit
 
 ## Корисні пояснення
 
-- collection за замовчуванням формується як `rag_<EMBEDDING_MODEL>`, наприклад `rag_text-embedding-3-small`
+- collection за замовчуванням формується як `rag_<EMBEDDING_MODEL>`, але назва автоматично нормалізується під вимоги Chroma
 - `CHROMA_COLLECTION` краще залишати порожнім, якщо хочете автоматично розділяти дані за embedding model
 - `RAG_TOP_K`, `RAG_CANDIDATE_LIMIT`, `RAG_MAX_DISTANCE` впливають на те, які chunk-и потрапляють у фінальну відповідь
 - `ask` і `ask-direct` варто порівнювати між собою під час дослідження сильних і слабких сторін RAG
+- для Hugging Face chat використовується OpenAI-сумісний endpoint `https://router.huggingface.co/v1/chat/completions`, а для embeddings `hf-inference` route `.../pipeline/feature-extraction`
 
 
 ## Завдання для дослідження
