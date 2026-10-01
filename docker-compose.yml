@@ -1,0 +1,24 @@
+services:
+  chroma:
+    image: chromadb/chroma:1.5.9
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/data
+
+  app:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CHROMA_URL: http://chroma:8000
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./pdf:/app/pdf
+    depends_on:
+      - chroma
+
+volumes:
+  chroma-data:

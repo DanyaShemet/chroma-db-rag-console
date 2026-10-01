@@ -140,6 +140,7 @@ export async function ensureCollection(): Promise<ChromaCollection> {
       method: 'POST',
       body: JSON.stringify({
         name: collectionName,
+        get_or_create: true,
         metadata: {
           source: 'src-console',
         },
@@ -302,7 +303,7 @@ export async function queryRecords(input: QueryInput): Promise<QueryRecordsResul
   }
 }
 
-export async function listRecords(limit = 100): Promise<ChromaGetResponse> {
+export async function listRecords(limit?: number): Promise<ChromaGetResponse> {
   const collection = await ensureCollection()
 
   return request<ChromaGetResponse>(

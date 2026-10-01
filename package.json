@@ -10,11 +10,15 @@
     "dev:watch": "tsc --watch",
     "dev:cli": "nodemon dist/index.js",
     "dev:full": "concurrently -k \"tsc --watch\" \"wait-on dist/index.js && nodemon dist/index.js\"",
+    "dev:server": "node --watch dist/server/index.js",
+    "dev:web": "npm run dev -w web",
     "build": "tsc -p tsconfig.json",
+    "build:web": "npm run build -w web",
     "clean": "rimraf dist",
     "ts-compile": "npm run clean ; tsc",
     "typecheck": "tsc --noEmit",
     "start": "npm run ts-compile ; node dist/index.js",
+    "start:web": "npm run ts-compile ; npm run build:web ; node dist/server/index.js",
     "start:chroma": "chroma run --path ./chroma-data"
   },
   "author": "",
@@ -35,5 +39,8 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
     "wait-on": "^8.0.3"
-  }
+  },
+  "workspaces": [
+    "web"
+  ]
 }
