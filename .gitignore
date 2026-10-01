@@ -5,3 +5,5 @@
 explaining.md
 /pdf
 /chroma-data
+/web/dist
+/web/node_modules

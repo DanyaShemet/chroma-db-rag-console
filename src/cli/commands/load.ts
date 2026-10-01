@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import pc from 'picocolors'
-import { indexPdf } from '../../rag/index.js'
+import { indexDocument } from '../../rag/index.js'
 import { info, success } from '../ui.js'
 import { requireValue } from '../helpers/validation.js'
 
@@ -9,6 +11,8 @@ export async function handleLoadCommand(value: string): Promise<void> {
   }
 
   console.log(info('Indexing file...'))
-  const result = await indexPdf(value)
+  const absolutePath = path.resolve(value)
+  const fileBuffer = await readFile(absolutePath)
+  const result = await indexDocument(fileBuffer, path.basename(absolutePath), absolutePath)
   console.log(success(`Indexed ${pc.bold(result.fileName)} with ${result.chunkCount} chunks.`))
 }

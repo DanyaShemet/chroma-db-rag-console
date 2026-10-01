@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { addRecords, deleteRecords, listRecords, queryRecords, resetCollection } from '../chroma/index.js'
@@ -24,11 +23,9 @@ import type {
 } from '../models/types/rag.js'
 import { getNonNegativeNumberEnv, getPositiveIntegerEnv, hasTermOverlap } from './helpers.js'
 
-export async function indexPdf(filePath: string): Promise<IndexedDocument> {
-  const absolutePath = path.resolve(filePath)
-  const fileBuffer = await readFile(absolutePath)
-  const text = await extractDocumentText(fileBuffer, absolutePath)
-  const extension = path.extname(absolutePath).toLowerCase()
+export async function indexDocument(fileBuffer: Uint8Array, fileName: string, sourcePath: string): Promise<IndexedDocument> {
+  const text = await extractDocumentText(fileBuffer, fileName)
+  const extension = path.extname(fileName).toLowerCase()
   const documentLabel = extension === '.txt' ? 'TXT file' : 'PDF'
 
   if (!text.trim()) {
@@ -41,11 +38,9 @@ export async function indexPdf(filePath: string): Promise<IndexedDocument> {
     throw new Error(`No text chunks were created from the ${documentLabel}.`)
   }
 
-  const fileName = path.basename(absolutePath)
-  const existingRecords = await listRecords(1000)
+  const existingRecords = await listRecords()
   const staleIds = existingRecords.ids.filter((_, index) => {
-    const sourcePath = existingRecords.metadatas?.[index]?.sourcePath
-    return sourcePath === absolutePath
+    return existingRecords.metadatas?.[index]?.sourcePath === sourcePath
   })
 
   if (staleIds.length) {
@@ -60,7 +55,7 @@ export async function indexPdf(filePath: string): Promise<IndexedDocument> {
     embeddings,
     metadatas: chunks.map((_, index) => ({
       fileName,
-      sourcePath: absolutePath,
+      sourcePath,
       chunkIndex: index,
     })),
   })
@@ -165,7 +160,7 @@ export async function getKnowledgeBaseSummary(): Promise<KnowledgeBaseSummary> {
 }
 
 export async function getIndexedChunks(filter?: string): Promise<IndexedChunkRow[]> {
-  const records = await listRecords(1000)
+  const records = await listRecords()
   const normalizedFilter = filter?.trim().toLowerCase()
 
   return records.ids
@@ -212,7 +207,7 @@ export async function getIndexedChunk(filter: string, chunkIndex: number): Promi
     return null
   }
 
-  const records = await listRecords(1000)
+  const records = await listRecords()
 
   for (let index = 0; index < records.ids.length; index += 1) {
     const metadata = records.metadatas?.[index]
